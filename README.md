@@ -1,11 +1,10 @@
 # safe
 
-Safe is minimal toolchain to **encrypt**, **embed**, and **execute** ELF binaries in memory.  
+Safe is minimal toolchain to **compress**, **encrypt**, **embed**, and **execute** ELF binaries in memory without touching the disk.  
 
 - `encrypt`: Encrypt ELF
 - `launch`: Decrypts and runs encrypted ELF
 - `decrypt`: Decrypts captured encrypted output
-- `release_embed`: Builds a self-contained, embedded launcher
 
 ## Example workflow
 
@@ -32,11 +31,22 @@ make release_embed
 
 # 7. Run embedded binary and capture encrypted stdout
 build/launch --out out.enc
-````
+```
 
-> Override default target:
->
-> ```bash
-> make pack TARGET=./myelf
-> make release_embed TARGET=./myelf
-> ```
+## Override default target
+
+```bash
+make pack TARGET=./myelf
+make release_embed TARGET=./myelf
+```
+
+## Roadmap
+
+- [ ] Asymmetric encryption, passwordless mode, keyfile or environment-based decryption for CI/CD.
+- [ ] macOS and Windows support, portable launcher backends.
+- [ ] Header authentication, keyed integrity over encryption headers.
+- [ ] Metadata inspector tool, view header metadata without decrypting payloads.
+- [ ] Automated reproducibility check, verify identical builds for a given seed.
+- [ ] Optional static analysis, make lint with clang-tidy/cppcheck.
+- [ ] Unit test scaffolds, round-trip encrypt -> decrypt -> verify.
+- [ ] Streaming encryption and decryption, constant-memory operation for large payloads and pipeline support.
