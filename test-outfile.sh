@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-SUDOPASS="secret"
+SUDOPASS=""
 PASS="hello"
 ARGS=""
 
@@ -11,7 +11,7 @@ make clean
 make all
 
 expect <<EOF
-    spawn make release_embed
+    spawn make CFLAGS_EXTRA=-DDEBUG release_embed
     expect "New password:"
     send "$PASS\r"
     expect eof
@@ -22,7 +22,7 @@ expect <<EOF
     expect -re "(?i)password.*:"
     send -- "$SUDOPASS\r"
     sleep 1
-    send "$PASS\r"
+    send -- "$PASS\r"
     sleep 1
     send -- "$ARGS\r"
     expect eof
