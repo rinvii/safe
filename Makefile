@@ -2,7 +2,7 @@ CC              := musl-gcc
 CFLAGS_COMMON   := -O2 -fPIE -fstack-protector-strong -D_FORTIFY_SOURCE=2 -static -s \
                    -I/usr/local/musl/include -Isrc -fpack-struct=1 \
                    -ffunction-sections -fdata-sections
-LDFLAGS_COMMON  := /usr/local/musl/lib/libsodium.a -Wl,-z,relro -Wl,-z,now -Wl,--gc-sections
+LDFLAGS_COMMON  := /usr/local/musl/lib/libsodium.a -L/usr/local/musl/lib -lz -Wl,-z,relro -Wl,-z,now -Wl,--gc-sections
 
 CFLAGS_EXTRA    ?=
 LDFLAGS_EXTRA   ?=
@@ -135,6 +135,7 @@ _release_embed:
 
 	@$(MAKE) -B BUILD_FLAGS="-DBUILD_SEED=$(BUILD_SEED)" \
 	    CFLAGS_COMMON="$(CFLAGS_COMMON) -s -fno-ident -fno-asynchronous-unwind-tables" \
+		CFLAGS_EXTRA="$(CFLAGS_EXTRA)" \
 	    $(BUILD_DIR)/encrypt
 
 	@$(BUILD_DIR)/encrypt $(TARGET)
@@ -145,10 +146,10 @@ _release_embed:
 	@ld -r -b binary target.enc -o target_enc.o
 
 	@echo "$(BLUE)[CC]$(RESET) build/launch (embedded)"
-	@$(CC) $(CFLAGS_COMMON) -s -fno-ident -fno-asynchronous-unwind-tables \
+	@$(CC) $(CFLAGS_COMMON) $(CFLAGS_EXTRA) -s -fno-ident -fno-asynchronous-unwind-tables \
 	    -DEMBED_BLOB -DBUILD_SEED=$(BUILD_SEED) \
 	    -o $(BUILD_DIR)/launch $(LAUNCH_SRC) $(SRCDIR)/utils.o $(SRCDIR)/crypto.o target_enc.o \
-	    $(LDFLAGS_COMMON)
+	    $(LDFLAGS_COMMON) $(LDFLAGS_EXTRA)
 
 	@strip --strip-all $(BUILD_DIR)/launch || true
 	@echo "$(GREEN)[OK]$(RESET) Embedded release built (seed=$(BUILD_SEED)): $(BUILD_DIR)/launch"

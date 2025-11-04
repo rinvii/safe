@@ -228,3 +228,39 @@ int try_memfd_or_fallback(const char* name) {
     }
     return -1;
 }
+
+int zlib_compress(const unsigned char* in, size_t in_len, unsigned char** out, size_t* out_len) {
+    uLongf bound = compressBound(in_len);
+    *out = malloc(bound);
+    if (!*out) return -1;
+
+    int ret = compress2(*out, &bound, in, in_len, Z_BEST_COMPRESSION);
+    if (ret != Z_OK) {
+        free(*out);
+        return -1;
+    }
+    *out_len = bound;
+    return 0;
+}
+
+int zlib_decompress(const unsigned char* in, size_t in_len, unsigned char** out, size_t* out_len) {
+    // start with a guess 4x input, grow if needed
+    uLongf cap = in_len * 4;
+    *out = malloc(cap);
+    if (!*out) return -1;
+
+    int ret;
+    while ((ret = uncompress(*out, &cap, in, in_len)) == Z_BUF_ERROR) {
+        cap *= 2;
+        *out = realloc(*out, cap);
+        if (!*out) return -1;
+    }
+
+    if (ret != Z_OK) {
+        free(*out);
+        return -1;
+    }
+
+    *out_len = cap;
+    return 0;
+}

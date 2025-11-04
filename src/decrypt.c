@@ -37,24 +37,24 @@ int main(int argc, char** argv) {
     if (read_all(fd, ss_header, sizeof ss_header) != (ssize_t)sizeof ss_header)
         die("short file (stream header)");
 
-    fprintf(stderr, "file salt (16) = ");
-    for (size_t i = 0; i < sizeof(salt); i++)
-        fprintf(stderr, "%02x", salt[i]);
-    fprintf(stderr, "\nseed_marker (first 8) = ");
-    for (int i = 0; i < 8; i++)
-        fprintf(stderr, "%02x", (unsigned char)salt[i]);
-    fprintf(stderr, "\nBUILD_SEED (decrypt) = %lu\n", (unsigned long)BUILD_SEED);
+    // fprintf(stderr, "file salt (16) = ");
+    // for (size_t i = 0; i < sizeof(salt); i++)
+    //     fprintf(stderr, "%02x", salt[i]);
+    // fprintf(stderr, "\nseed_marker (first 8) = ");
+    // for (int i = 0; i < 8; i++)
+    //     fprintf(stderr, "%02x", (unsigned char)salt[i]);
+    // fprintf(stderr, "\nBUILD_SEED (decrypt) = %lu\n", (unsigned long)BUILD_SEED);
 
     unsigned char expected_magic[CRYPTO_MAGIC_LEN];
     derive_magic(expected_magic, salt, BUILD_SEED, "out");
 
-    fprintf(stderr, "expected_magic = ");
-    for (int i = 0; i < 8; i++)
-        fprintf(stderr, "%02x", expected_magic[i]);
-    fprintf(stderr, "\nfile_magic = ");
-    for (int i = 0; i < 8; i++)
-        fprintf(stderr, "%02x", (unsigned char)magic[i]);
-    fprintf(stderr, "\n");
+    // fprintf(stderr, "expected_magic = ");
+    // for (int i = 0; i < 8; i++)
+    //     fprintf(stderr, "%02x", expected_magic[i]);
+    // fprintf(stderr, "\nfile_magic = ");
+    // for (int i = 0; i < 8; i++)
+    //     fprintf(stderr, "%02x", (unsigned char)magic[i]);
+    // fprintf(stderr, "\n");
 
     if (memcmp(magic, expected_magic, CRYPTO_MAGIC_LEN) != 0)
         die("bad magic header (not a valid encrypted stream)");

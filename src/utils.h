@@ -1,6 +1,7 @@
 #pragma once
 #include <stddef.h>
 #include <sys/types.h>
+#include <zlib.h>
 
 void secure_zero(void* p, size_t n);
 #ifdef DEBUG
@@ -26,3 +27,5 @@ void subtle_jitter(void);
 void add_syscall_noise(unsigned int calls);
 int try_memfd_or_fallback(const char* name);
 unsigned int seed_prng_from_build(void);
+int zlib_compress(const unsigned char* in, size_t in_len, unsigned char** out, size_t* out_len);
+int zlib_decompress(const unsigned char* in, size_t in_len, unsigned char** out, size_t* out_len);

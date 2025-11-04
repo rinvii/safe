@@ -8,6 +8,7 @@
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <zlib.h>
 
 #ifndef BUILD_SEED
 #define BUILD_SEED 0UL
@@ -101,6 +102,18 @@ int main(int argc, char** argv) {
     if (!ct)
         die("oom allocating ciphertext");
     unsigned long long outlen = 0;
+
+    // compress plaintext before encryption
+    unsigned char* comp = NULL;
+    size_t comp_len = 0;
+    if (zlib_compress(buf, n, &comp, &comp_len) != 0)
+        die("compression failed");
+
+    // replace plaintext with compressed buffer
+    free(buf);
+    buf = comp;
+    n = comp_len;
+    hdr.flags |= 1; // mark compressed
 
     crypto_aead_xchacha20poly1305_ietf_encrypt(ct, &outlen, buf, n, (const unsigned char*)&hdr,
                                                sizeof hdr, NULL, hdr.nonce, key);
