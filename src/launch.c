@@ -2,6 +2,7 @@
 #include "crypto.h"
 #include "utils.h"
 #include <fcntl.h>
+#include <signal.h>
 #include <sodium.h>
 #include <stdarg.h>
 #include <stdbool.h>
@@ -20,7 +21,6 @@
 #include <sys/wait.h>
 #include <termios.h>
 #include <unistd.h>
-#include <signal.h>
 
 #ifdef EMBED_BLOB
 extern const unsigned char _binary_target_enc_start[];
@@ -32,41 +32,41 @@ extern const unsigned char _binary_target_enc_end[];
 #endif
 static const unsigned long build_seed = BUILD_SEED;
 
-static ssize_t prompt_line_stdin(char *buf, size_t cap, const char *prompt) {
-  fputs(prompt, stdout);
-  fflush(stdout);
-  if (!fgets(buf, (int)cap, stdin))
-    return -1;
-  size_t n = strcspn(buf, "\n");
-  buf[n] = '\0';
-  return (ssize_t)n;
+static ssize_t prompt_line_stdin(char* buf, size_t cap, const char* prompt) {
+    fputs(prompt, stdout);
+    fflush(stdout);
+    if (!fgets(buf, (int)cap, stdin))
+        return -1;
+    size_t n = strcspn(buf, "\n");
+    buf[n] = '\0';
+    return (ssize_t)n;
 }
 
-static char **split_ws(char *line, int *outc) {
-  int cap = 8, c = 0;
-  char **v = calloc((size_t)cap + 1, sizeof(char *));
-  char *s = line;
-  while (*s) {
-    while (*s == ' ' || *s == '\t')
-      s++;
-    if (!*s)
-      break;
-    char *st = s;
-    while (*s && *s != ' ' && *s != '\t')
-      s++;
-    int L = (int)(s - st);
-    char *t = malloc((size_t)L + 1);
-    memcpy(t, st, (size_t)L);
-    t[L] = '\0';
-    if (c == cap) {
-      cap *= 2;
-      v = realloc(v, ((size_t)cap + 1) * sizeof(char *));
+static char** split_ws(char* line, int* outc) {
+    int cap = 8, c = 0;
+    char** v = calloc((size_t)cap + 1, sizeof(char*));
+    char* s = line;
+    while (*s) {
+        while (*s == ' ' || *s == '\t')
+            s++;
+        if (!*s)
+            break;
+        char* st = s;
+        while (*s && *s != ' ' && *s != '\t')
+            s++;
+        int L = (int)(s - st);
+        char* t = malloc((size_t)L + 1);
+        memcpy(t, st, (size_t)L);
+        t[L] = '\0';
+        if (c == cap) {
+            cap *= 2;
+            v = realloc(v, ((size_t)cap + 1) * sizeof(char*));
+        }
+        v[c++] = t;
     }
-    v[c++] = t;
-  }
-  v[c] = NULL;
-  *outc = c;
-  return v;
+    v[c] = NULL;
+    *outc = c;
+    return v;
 }
 
 #ifndef SYS_memfd_create
@@ -78,17 +78,16 @@ static char **split_ws(char *line, int *outc) {
 #error "Define SYS_memfd_create for your arch"
 #endif
 #endif
-static int memfd_create_wrap(const char *name, unsigned int flags) {
-  return syscall(SYS_memfd_create, name, flags);
+static int memfd_create_wrap(const char* name, unsigned int flags) {
+    return syscall(SYS_memfd_create, name, flags);
 }
 
 #ifndef AT_EMPTY_PATH
 #define AT_EMPTY_PATH 0x1000
 #endif
 
-static int decrypt_target_to_memfd(const unsigned char *enc_bytes,
-                                   size_t enc_sz, int *out_mfd,
-                                   char **out_pw, size_t *out_pwlen) {
+static int decrypt_target_to_memfd(const unsigned char* enc_bytes, size_t enc_sz, int* out_mfd,
+                                   char** out_pw, size_t* out_pwlen) {
     *out_mfd = -1;
 
     if (enc_sz < sizeof(struct enc_header) + crypto_aead_xchacha20poly1305_ietf_ABYTES)
@@ -100,24 +99,24 @@ static int decrypt_target_to_memfd(const unsigned char *enc_bytes,
     // fprintf(stderr, "HDR DEBUG: launcher BUILD_SEED=%lu\n", (unsigned long)BUILD_SEED);
     derive_magic(expected_magic, hdr.seed_marker, BUILD_SEED, "hdr");
 
-// fprintf(stderr, "hdr.magic =");
-// for (int i = 0; i < 8; i++) fprintf(stderr, " %02x", (unsigned char)hdr.magic[i]);
-// fprintf(stderr, "\nexpected =");
-// for (int i = 0; i < 8; i++) fprintf(stderr, " %02x", (unsigned char)expected_magic[i]);
-// fprintf(stderr, "\nseed_marker =");
-// for (int i = 0; i < 8; i++) fprintf(stderr, " %02x", hdr.seed_marker[i]);
-// fprintf(stderr, "\nBUILD_SEED=%lu\n", (unsigned long)BUILD_SEED);
-    
+    // fprintf(stderr, "hdr.magic =");
+    // for (int i = 0; i < 8; i++) fprintf(stderr, " %02x", (unsigned char)hdr.magic[i]);
+    // fprintf(stderr, "\nexpected =");
+    // for (int i = 0; i < 8; i++) fprintf(stderr, " %02x", (unsigned char)expected_magic[i]);
+    // fprintf(stderr, "\nseed_marker =");
+    // for (int i = 0; i < 8; i++) fprintf(stderr, " %02x", hdr.seed_marker[i]);
+    // fprintf(stderr, "\nBUILD_SEED=%lu\n", (unsigned long)BUILD_SEED);
+
     if (memcmp(hdr.magic, expected_magic, CRYPTO_MAGIC_LEN) != 0)
         die("bad magic in target.enc");
     if (hdr.version != CRYPTO_VERSION)
         die("unsupported format version");
 
-    const unsigned char *ct = enc_bytes + sizeof hdr;
+    const unsigned char* ct = enc_bytes + sizeof hdr;
     size_t ctsz = enc_sz - sizeof hdr;
 
     enum { MAXPW = 4096 };
-    char *pw = NULL;
+    char* pw = NULL;
     size_t pwlen = 0;
     bool pw_allocated_here = false;
 
@@ -151,8 +150,8 @@ static int decrypt_target_to_memfd(const unsigned char *enc_bytes,
         // fprintf(stderr, "warning: mlock key failed: %s\n", strerror(errno));
     }
 
-    if (crypto_pwhash(key, sizeof key, pw, pwlen, hdr.salt,
-                      KDF_OPSLIMIT, KDF_MEMLIMIT, KDF_ALG) != 0) {
+    if (crypto_pwhash(key, sizeof key, pw, pwlen, hdr.salt, KDF_OPSLIMIT, KDF_MEMLIMIT, KDF_ALG) !=
+        0) {
         secure_zero(pw, MAXPW);
         munlock(pw, MAXPW);
         if (pw_allocated_here)
@@ -168,7 +167,7 @@ static int decrypt_target_to_memfd(const unsigned char *enc_bytes,
             free(pw);
     }
 
-    unsigned char *pt = malloc(ctsz);
+    unsigned char* pt = malloc(ctsz);
     if (!pt) {
         secure_zero(key, sizeof key);
         munlock(key, sizeof key);
@@ -179,9 +178,9 @@ static int decrypt_target_to_memfd(const unsigned char *enc_bytes,
     }
 
     unsigned long long ptsz = 0;
-    if (crypto_aead_xchacha20poly1305_ietf_decrypt(
-            pt, &ptsz, NULL, ct, ctsz, (const unsigned char *)&hdr,
-            sizeof hdr, hdr.nonce, key) != 0) {
+    if (crypto_aead_xchacha20poly1305_ietf_decrypt(pt, &ptsz, NULL, ct, ctsz,
+                                                   (const unsigned char*)&hdr, sizeof hdr,
+                                                   hdr.nonce, key) != 0) {
         secure_zero(key, sizeof key);
         munlock(key, sizeof key);
         secure_zero(pt, ctsz);
@@ -240,18 +239,14 @@ static int decrypt_target_to_memfd(const unsigned char *enc_bytes,
     return 0;
 }
 
-
-
-
 static volatile sig_atomic_t keep_running = 1;
 
 void handle_signal(int sig) {
     keep_running = 0;
 }
 
-static void capture_and_encrypt_output(int read_fd, const char *outfile,
-                                       const unsigned char *outkey,
-                                       const unsigned char *outsalt) {
+static void capture_and_encrypt_output(int read_fd, const char* outfile,
+                                       const unsigned char* outkey, const unsigned char* outsalt) {
     unsigned char salt[crypto_pwhash_SALTBYTES];
     unsigned char key[crypto_secretstream_xchacha20poly1305_KEYBYTES];
     if (mlock(key, sizeof key) != 0) {
@@ -283,9 +278,9 @@ static void capture_and_encrypt_output(int read_fd, const char *outfile,
         unsigned char out_magic[CRYPTO_MAGIC_LEN];
         // fprintf(stderr, "OUT DEBUG: launcher BUILD_SEED=%lu\n", (unsigned long)BUILD_SEED);
         derive_magic(out_magic, outsalt, build_seed, "out");
-        write(fd, out_magic, CRYPTO_MAGIC_LEN);     // Magic header
-        write(fd, salt, sizeof(salt));              // Write salt
-        write(fd, ss_header, sizeof(ss_header));    // Stream header
+        write(fd, out_magic, CRYPTO_MAGIC_LEN);  // Magic header
+        write(fd, salt, sizeof(salt));           // Write salt
+        write(fd, ss_header, sizeof(ss_header)); // Stream header
     }
 
     unsigned char inbuf[8192];
@@ -295,16 +290,12 @@ static void capture_and_encrypt_output(int read_fd, const char *outfile,
     while ((r = read(read_fd, inbuf, sizeof inbuf)) > 0) {
         unsigned long long outlen = 0;
 
-        crypto_secretstream_xchacha20poly1305_push(
-            &st, outbuf, &outlen, inbuf, (unsigned long long)r, NULL, 0, 0);
+        crypto_secretstream_xchacha20poly1305_push(&st, outbuf, &outlen, inbuf,
+                                                   (unsigned long long)r, NULL, 0, 0);
 
         uint32_t be_len = (uint32_t)outlen;
-        unsigned char lenbuf[4] = {
-            (be_len >> 24) & 0xff,
-            (be_len >> 16) & 0xff,
-            (be_len >> 8) & 0xff,
-            be_len & 0xff
-        };
+        unsigned char lenbuf[4] = {(be_len >> 24) & 0xff, (be_len >> 16) & 0xff,
+                                   (be_len >> 8) & 0xff, be_len & 0xff};
 
         // write length of chunk (4 bytes)
         write(fd, lenbuf, 4);
@@ -318,16 +309,12 @@ static void capture_and_encrypt_output(int read_fd, const char *outfile,
 
     // add final tag after the last chunk is written
     unsigned long long outlen_final = 0;
-    crypto_secretstream_xchacha20poly1305_push(
-        &st, outbuf, &outlen_final, NULL, 0, NULL, 0, crypto_secretstream_xchacha20poly1305_TAG_FINAL);
+    crypto_secretstream_xchacha20poly1305_push(&st, outbuf, &outlen_final, NULL, 0, NULL, 0,
+                                               crypto_secretstream_xchacha20poly1305_TAG_FINAL);
 
     uint32_t be_len_final = (uint32_t)outlen_final;
-    unsigned char lenbuf_final[4] = {
-        (be_len_final >> 24) & 0xff,
-        (be_len_final >> 16) & 0xff,
-        (be_len_final >> 8) & 0xff,
-        be_len_final & 0xff
-    };
+    unsigned char lenbuf_final[4] = {(be_len_final >> 24) & 0xff, (be_len_final >> 16) & 0xff,
+                                     (be_len_final >> 8) & 0xff, be_len_final & 0xff};
 
     // write final chunk length (4 bytes)
     write(fd, lenbuf_final, 4);
@@ -346,16 +333,11 @@ static void capture_and_encrypt_output(int read_fd, const char *outfile,
     secure_zero(key, sizeof key);
     munlock(key, sizeof key);
     secure_zero(salt, sizeof salt);
-    close(fd);  // Close the file
+    close(fd); // Close the file
 }
 
-
-
-
-static void daemonize_and_run(int mfd, char **argv2,
-                              const char *outfile,
-                              const unsigned char *outkey,
-                              const unsigned char *outsalt) {
+static void daemonize_and_run(int mfd, char** argv2, const char* outfile,
+                              const unsigned char* outkey, const unsigned char* outsalt) {
     int pfd[2];
     if (pipe2(pfd, O_CLOEXEC) != 0)
         die("pipe2: %s", strerror(errno));
@@ -364,7 +346,7 @@ static void daemonize_and_run(int mfd, char **argv2,
     if (pid < 0)
         die("fork: %s", strerror(errno));
     if (pid > 0)
-        return;  // parent returns immediately to shell
+        return; // parent returns immediately to shell
 
     if (setsid() < 0)
         _exit(1);
@@ -373,7 +355,7 @@ static void daemonize_and_run(int mfd, char **argv2,
     if (pid < 0)
         _exit(1);
     if (pid > 0)
-        _exit(0);  // middle process exits
+        _exit(0); // middle process exits
 
     // grandchild (daemon)
     pid_t cpid = fork();
@@ -394,7 +376,7 @@ static void daemonize_and_run(int mfd, char **argv2,
         unsetenv("LD_PRELOAD");
         unsetenv("LD_LIBRARY_PATH");
 
-        extern char **environ;
+        extern char** environ;
         unsigned int rseed = seed_prng_from_build();
         add_syscall_noise(rand_r(&rseed) % 6 + 1);
         if (fexecve(mfd, argv2, environ) == -1)
@@ -411,15 +393,12 @@ static void daemonize_and_run(int mfd, char **argv2,
     _exit(0);
 }
 
-
-int main(int argc, char **argv) {
+int main(int argc, char** argv) {
     if (sodium_init() < 0)
         die("libsodium init failed");
 
-      
-
-    const char *enc_path = NULL;
-    const char *outfile = NULL;
+    const char* enc_path = NULL;
+    const char* outfile = NULL;
 
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--out") == 0) {
@@ -433,7 +412,7 @@ int main(int argc, char **argv) {
         }
     }
 
-    unsigned char *enc = NULL;
+    unsigned char* enc = NULL;
     size_t enc_sz = 0;
     bool use_embedded = false;
 
@@ -442,7 +421,7 @@ int main(int argc, char **argv) {
     extern const unsigned char _binary_target_enc_end[];
     use_embedded = (!enc_path) || (strcmp(enc_path, "--embedded") == 0);
     if (use_embedded) {
-        enc = (unsigned char *)_binary_target_enc_start;
+        enc = (unsigned char*)_binary_target_enc_start;
         enc_sz = (size_t)(_binary_target_enc_end - _binary_target_enc_start);
     } else
 #endif
@@ -482,7 +461,7 @@ int main(int argc, char **argv) {
 
     int mfd = -1;
     enum { MAXPW = 4096 };
-    char *pw = malloc(MAXPW);
+    char* pw = malloc(MAXPW);
     if (!pw)
         die("oom");
     if (mlock(pw, MAXPW) != 0) {
@@ -511,17 +490,17 @@ int main(int argc, char **argv) {
 
     // collect args
     enum { MAXLINE = 8192 };
-    char *line = malloc(MAXLINE);
+    char* line = malloc(MAXLINE);
     if (!line)
         die("oom");
     if (prompt_hidden_tty(line, MAXLINE, "") < 0)
         line[0] = '\0';
     int ac = 0;
-    char **av = split_ws(line, &ac);
+    char** av = split_ws(line, &ac);
     free(line);
 
-    char **argv2 = calloc((size_t)(ac + 2), sizeof(char *));
-    argv2[0] = (char *)"target";
+    char** argv2 = calloc((size_t)(ac + 2), sizeof(char*));
+    argv2[0] = (char*)"target";
     for (int i = 0; i < ac; i++)
         argv2[i + 1] = av[i];
     argv2[ac + 1] = NULL;
@@ -532,12 +511,12 @@ int main(int argc, char **argv) {
 
     randombytes_buf(outsalt, sizeof outsalt);
 
-    if (mlock(outkey, sizeof outkey) != 0)  {
+    if (mlock(outkey, sizeof outkey) != 0) {
         // fprintf(stderr, "warning: mlock outkey failed: %s\n", strerror(errno));
     }
 
-    if (crypto_pwhash(outkey, sizeof outkey, pw, pwlen,
-                      outsalt, KDF_OPSLIMIT, KDF_MEMLIMIT, KDF_ALG) != 0) {
+    if (crypto_pwhash(outkey, sizeof outkey, pw, pwlen, outsalt, KDF_OPSLIMIT, KDF_MEMLIMIT,
+                      KDF_ALG) != 0) {
         secure_zero(outkey, sizeof outkey);
         munlock(outkey, sizeof outkey);
         die("KDF for outkey failed");
@@ -549,14 +528,14 @@ int main(int argc, char **argv) {
     free(pw);
     pw = NULL;
     pwlen = 0;
-    
+
     if (outfile) {
         daemonize_and_run(mfd, argv2, outfile, outkey, outsalt);
 
         // cleanup parent
         secure_zero(outkey, sizeof outkey);
         munlock(outkey, sizeof outkey);
-        
+
         for (int i = 0; i < ac; i++) {
             secure_zero(av[i], strlen(av[i]));
             free(av[i]);
@@ -580,7 +559,7 @@ int main(int argc, char **argv) {
         unsetenv("LD_PRELOAD");
         unsetenv("LD_LIBRARY_PATH");
 
-        extern char **environ;
+        extern char** environ;
         unsigned int rseed = seed_prng_from_build();
         add_syscall_noise(rand_r(&rseed) % 6 + 1);
         if (fexecve(mfd, argv2, environ) == -1)

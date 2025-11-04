@@ -1,0 +1,74 @@
+# .clangd - configuration tuned for the "safe" project
+# Place at the repository root.
+
+CompileFlags:
+  # If you use a compile_commands.json (recommended), clangd will prefer it.
+  # FallbackFlags are used when compile_commands.json is missing for a file.
+  FallbackFlags:
+    # Use the C language level the project expects.
+    - -std=gnu11
+    - -D_GNU_SOURCE
+    - -D_POSIX_C_SOURCE=200809L
+    # Common include dirs used by the project's Makefile
+    - -I/usr/local/musl/include
+    - -Isrc
+    # Common macros (don't hardcode BUILD_SEED here; set via compile_commands.json for releases)
+    - -DENABLE_MLOCKALL=1
+    - -DENABLE_SEALING=1
+    - -DENABLE_ARGON2ID=1
+    # Safety / feature flags used by source
+    - -D_FORTIFY_SOURCE=2
+    # Make clangd parse static builds sensibly
+    - -fPIC
+    - -fstack-protector-strong
+
+Index:
+  # enable cross-file indexing for faster/goofer completion
+  Background: true
+  # whole-project indexing improves cross-file navigation; set to true for larger repos
+  StoragePath: .cache/clangd-index
+  ThreadCount: 0   # 0 -> auto
+
+ClangTidy:
+  # Enable clang-tidy and configure checks. We enable a conservative, useful baseline.
+  # Start from empty set and add high-value checks to avoid excessive noise.
+  Add:
+    - -checks=*
+    - -checks=-clang-analyzer-alpha.*        # avoid unstable alpha checks
+    - -checks=-fuchsia-*                     # filter platform-specific checks
+    - -checks=-google-*                      # filter google style (optional)
+    - -checks=-llvm-header-guard
+    - -checks=clang-analyzer-*,bugprone-*,performance-*,modernize-*,readability-*,misc-*,security-*
+  # Optionally allow auto-fixing on save in capable editors; set to "false" if you don't want fixes
+  Fix: false
+  # Limit the header filter to project headers (avoid external system headers)
+  HeaderFilterRegex: 'src/|include/|.*\.h$'
+
+Diagnostics:
+  # Show performance hints but avoid overwhelming warnings from system headers
+  SuppressSystemIncludes: true
+  # Show clang-tidy diagnostics in the Problems view
+  Hide: []
+
+Completion:
+  # Prioritize longer, "smarter" completions
+  Dots: true
+  # Include snippets in completion
+  IncludeCompletionsWithSnippets: true
+
+Hover:
+  # Show full type info on hover
+  ShowReturnType: true
+
+Workspace:
+  # Enable template for compile_commands.json discovery
+  # If you generate compile_commands.json with Bear or CMake, clangd will use it.
+  # No files to list here - leave blank.
+
+Diagnostics:
+  # Be tolerant with macros that the Makefile injects (like BUILD_SEED).
+  # If you want clangd to honor the exact BUILD_SEED used for a build, generate compile_commands.json.
+
+# Optional: configure clangd to watch for changed compile_commands.json
+CompileFlags:
+  CompilationDatabase: .

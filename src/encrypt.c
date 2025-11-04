@@ -1,3 +1,5 @@
+#include "crypto.h"
+#include "utils.h"
 #include <errno.h>
 #include <sodium.h>
 #include <stdio.h>
@@ -6,15 +8,13 @@
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <unistd.h>
-#include "crypto.h"
-#include "utils.h"
 
 #ifndef BUILD_SEED
 #define BUILD_SEED 0UL
 #endif
 static const unsigned long build_seed = BUILD_SEED;
 
-int main(int argc, char **argv) {
+int main(int argc, char** argv) {
     if (argc < 2) {
         fprintf(stderr, "Usage: %s <plain-ELF>\n", argv[0]);
         return 2;
@@ -22,30 +22,46 @@ int main(int argc, char **argv) {
     if (sodium_init() < 0)
         die("libsodium init failed");
 
-    const char *in = argv[1];
+    const char* in = argv[1];
     char out[4096];
     snprintf(out, sizeof(out), "%s.enc", in);
 
-    FILE *f = fopen(in, "rb");
-    if (!f) { perror("open input"); return 1; }
+    FILE* f = fopen(in, "rb");
+    if (!f) {
+        perror("open input");
+        return 1;
+    }
     struct stat st;
-    if (fstat(fileno(f), &st)) { perror("stat"); fclose(f); return 1; }
+    if (fstat(fileno(f), &st)) {
+        perror("stat");
+        fclose(f);
+        return 1;
+    }
     size_t n = st.st_size;
-    unsigned char *buf = malloc(n);
-    if (!buf) { perror("malloc"); fclose(f); return 1; }
-    if (fread(buf, 1, n, f) != n) { perror("read"); fclose(f); free(buf); return 1; }
+    unsigned char* buf = malloc(n);
+    if (!buf) {
+        perror("malloc");
+        fclose(f);
+        return 1;
+    }
+    if (fread(buf, 1, n, f) != n) {
+        perror("read");
+        fclose(f);
+        free(buf);
+        return 1;
+    }
     fclose(f);
 
     // build encryption header
     struct enc_header hdr;
     fill_enc_header(&hdr, build_seed);
 
-// fprintf(stderr, "ENCRYPT DEBUG: BUILD_SEED=%lu\n", (unsigned long)BUILD_SEED);
-// fprintf(stderr, "hdr.magic =");
-// for (int i = 0; i < 8; i++) fprintf(stderr, " %02x", (unsigned char)hdr.magic[i]);
-// fprintf(stderr, "\nseed_marker =");
-// for (int i = 0; i < 8; i++) fprintf(stderr, " %02x", hdr.seed_marker[i]);
-// fprintf(stderr, "\n");
+    // fprintf(stderr, "ENCRYPT DEBUG: BUILD_SEED=%lu\n", (unsigned long)BUILD_SEED);
+    // fprintf(stderr, "hdr.magic =");
+    // for (int i = 0; i < 8; i++) fprintf(stderr, " %02x", (unsigned char)hdr.magic[i]);
+    // fprintf(stderr, "\nseed_marker =");
+    // for (int i = 0; i < 8; i++) fprintf(stderr, " %02x", hdr.seed_marker[i]);
+    // fprintf(stderr, "\n");
 
     // fprintf(stderr, "sizeof(struct enc_header) = %zu\n", sizeof(struct enc_header));
 
@@ -65,8 +81,8 @@ int main(int argc, char **argv) {
         fprintf(stderr, "warning: mlock pw failed: %s\n", strerror(errno));
 
     unsigned char key[crypto_aead_xchacha20poly1305_ietf_KEYBYTES];
-      if (crypto_pwhash(key, sizeof key, pw, pwlen, hdr.salt,
-              KDF_OPSLIMIT, KDF_MEMLIMIT, KDF_ALG) != 0) {
+    if (crypto_pwhash(key, sizeof key, pw, pwlen, hdr.salt, KDF_OPSLIMIT, KDF_MEMLIMIT, KDF_ALG) !=
+        0) {
         secure_zero(pw, sizeof pw);
         free(buf);
         die("KDF failed");
@@ -81,21 +97,19 @@ int main(int argc, char **argv) {
         fprintf(stderr, "warning: mlock key failed: %s\n", strerror(errno));
 
     size_t csz = n + crypto_aead_xchacha20poly1305_ietf_ABYTES;
-    unsigned char *ct = malloc(csz);
-    if (!ct) die("oom allocating ciphertext");
+    unsigned char* ct = malloc(csz);
+    if (!ct)
+        die("oom allocating ciphertext");
     unsigned long long outlen = 0;
 
-    crypto_aead_xchacha20poly1305_ietf_encrypt(
-        ct, &outlen,
-        buf, n,
-        (const unsigned char *)&hdr, sizeof hdr,
-        NULL,
-        hdr.nonce, key);
+    crypto_aead_xchacha20poly1305_ietf_encrypt(ct, &outlen, buf, n, (const unsigned char*)&hdr,
+                                               sizeof hdr, NULL, hdr.nonce, key);
 
-    FILE *g = fopen(out, "wb");
+    FILE* g = fopen(out, "wb");
     if (!g) {
         perror("open output");
-        free(buf); free(ct);
+        free(buf);
+        free(ct);
         return 1;
     }
     fwrite(&hdr, 1, sizeof hdr, g);

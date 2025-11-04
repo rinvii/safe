@@ -1,0 +1,121 @@
+[
+  {
+    "arguments": [
+      "/usr/bin/musl-gcc",
+      "-O2",
+      "-fPIE",
+      "-fstack-protector-strong",
+      "-D_FORTIFY_SOURCE=2",
+      "-I/usr/local/musl/include",
+      "-Isrc",
+      "-fpack-struct=1",
+      "-ffunction-sections",
+      "-fdata-sections",
+      "-DBUILD_SEED=2062624786",
+      "-c",
+      "-o",
+      "src/utils.o",
+      "src/utils.c"
+    ],
+    "directory": "/home/user/safe",
+    "file": "/home/user/safe/src/utils.c",
+    "output": "/home/user/safe/src/utils.o"
+  },
+  {
+    "arguments": [
+      "/usr/bin/musl-gcc",
+      "-O2",
+      "-fPIE",
+      "-fstack-protector-strong",
+      "-D_FORTIFY_SOURCE=2",
+      "-I/usr/local/musl/include",
+      "-Isrc",
+      "-fpack-struct=1",
+      "-ffunction-sections",
+      "-fdata-sections",
+      "-DBUILD_SEED=2062624786",
+      "-c",
+      "-o",
+      "src/crypto.o",
+      "src/crypto.c"
+    ],
+    "directory": "/home/user/safe",
+    "file": "/home/user/safe/src/crypto.c",
+    "output": "/home/user/safe/src/crypto.o"
+  },
+  {
+    "arguments": [
+      "/usr/bin/musl-gcc",
+      "-c",
+      "-O2",
+      "-fPIE",
+      "-fstack-protector-strong",
+      "-D_FORTIFY_SOURCE=2",
+      "-I/usr/local/musl/include",
+      "-Isrc",
+      "-fpack-struct=1",
+      "-ffunction-sections",
+      "-fdata-sections",
+      "-DBUILD_SEED=2062624786",
+      "src/utils.o",
+      "src/crypto.o",
+      "/usr/local/musl/lib/libsodium.a",
+      "-o",
+      "build/encrypt",
+      "src/encrypt.c"
+    ],
+    "directory": "/home/user/safe",
+    "file": "/home/user/safe/src/encrypt.c",
+    "output": "/home/user/safe/build/encrypt"
+  },
+  {
+    "arguments": [
+      "/usr/bin/musl-gcc",
+      "-c",
+      "-O2",
+      "-fPIE",
+      "-fstack-protector-strong",
+      "-D_FORTIFY_SOURCE=2",
+      "-I/usr/local/musl/include",
+      "-Isrc",
+      "-fpack-struct=1",
+      "-ffunction-sections",
+      "-fdata-sections",
+      "-DBUILD_SEED=2062624786",
+      "src/utils.o",
+      "src/crypto.o",
+      "/usr/local/musl/lib/libsodium.a",
+      "-o",
+      "build/launch",
+      "src/launch.c"
+    ],
+    "directory": "/home/user/safe",
+    "file": "/home/user/safe/src/launch.c",
+    "output": "/home/user/safe/build/launch"
+  },
+  {
+    "arguments": [
+      "/usr/bin/musl-gcc",
+      "-c",
+      "-O2",
+      "-fPIE",
+      "-fstack-protector-strong",
+      "-D_FORTIFY_SOURCE=2",
+      "-I/usr/local/musl/include",
+      "-Isrc",
+      "-fpack-struct=1",
+      "-ffunction-sections",
+      "-fdata-sections",
+      "-DBUILD_SEED=2062624786",
+      "src/utils.o",
+      "src/crypto.o",
+      "/usr/local/musl/lib/libsodium.a",
+      "-o",
+      "build/decrypt",
+      "src/decrypt.c"
+    ],
+    "directory": "/home/user/safe",
+    "file": "/home/user/safe/src/decrypt.c",
+    "output": "/home/user/safe/build/decrypt"
+  }
+]
