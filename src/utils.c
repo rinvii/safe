@@ -20,12 +20,6 @@
 #define O_TMPFILE (020000000 | O_DIRECTORY)
 #endif
 
-void secure_zero(void* p, size_t n) {
-    volatile unsigned char* v = (volatile unsigned char*)p;
-    while (n--)
-        *v++ = 0;
-}
-
 ssize_t prompt_hidden_tty(char* buf, size_t cap, const char* prompt) {
     int tty = open("/dev/tty", O_RDWR | O_NOCTTY);
     if (tty < 0)
@@ -231,36 +225,53 @@ int try_memfd_or_fallback(const char* name) {
 
 int zlib_compress(const unsigned char* in, size_t in_len, unsigned char** out, size_t* out_len) {
     uLongf bound = compressBound(in_len);
-    *out = malloc(bound);
-    if (!*out) return -1;
+    *out = sodium_allocarray(bound, 1);
+    if (!*out)
+        return -1;
+
+    if (sodium_mlock(*out, bound) != 0) {
+        // fprintf(stderr, "warning: mlock failed in zlib_compress\n");
+    }
 
     int ret = compress2(*out, &bound, in, in_len, Z_BEST_COMPRESSION);
     if (ret != Z_OK) {
-        free(*out);
+        sodium_free(*out);
+        *out = NULL;
         return -1;
     }
+
     *out_len = bound;
     return 0;
 }
 
 int zlib_decompress(const unsigned char* in, size_t in_len, unsigned char** out, size_t* out_len) {
-    // start with a guess 4x input, grow if needed
-    uLongf cap = in_len * 4;
-    *out = malloc(cap);
-    if (!*out) return -1;
+    uLongf cap = in_len * 4; // initial guess
+    *out = sodium_allocarray(cap, 1);
+    if (!*out)
+        return -1;
+
+    if (sodium_mlock(*out, cap) != 0) {
+        fprintf(stderr, "warning: mlock failed in zlib_decompress\n");
+    }
 
     int ret;
-    while ((ret = uncompress(*out, &cap, in, in_len)) == Z_BUF_ERROR) {
+    uLongf out_size = cap;
+    while ((ret = uncompress(*out, &out_size, in, in_len)) == Z_BUF_ERROR) {
+        sodium_free(*out);
         cap *= 2;
-        *out = realloc(*out, cap);
-        if (!*out) return -1;
+        *out = sodium_allocarray(cap, 1);
+        if (!*out)
+            return -1;
+        if (sodium_mlock(*out, cap) != 0) {
+        }
+        out_size = cap; // reset available space before retry
     }
-
     if (ret != Z_OK) {
-        free(*out);
+        sodium_free(*out);
+        *out = NULL;
         return -1;
     }
-
+    *out_len = out_size;
     *out_len = cap;
     return 0;
 }

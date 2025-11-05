@@ -1,6 +1,7 @@
 #define _GNU_SOURCE
 #include "crypto.h"
 #include "utils.h"
+#include <errno.h>
 #include <fcntl.h>
 #include <signal.h>
 #include <sodium.h>
@@ -21,7 +22,6 @@
 #include <sys/wait.h>
 #include <termios.h>
 #include <unistd.h>
-#include <errno.h>
 
 #ifdef EMBED_BLOB
 extern const unsigned char _binary_target_enc_start[];
@@ -96,6 +96,7 @@ static int decrypt_target_to_memfd(const unsigned char* enc_bytes, size_t enc_sz
 
     struct enc_header hdr;
     memcpy(&hdr, enc_bytes, sizeof hdr);
+
     unsigned char expected_magic[CRYPTO_MAGIC_LEN];
     // fprintf(stderr, "HDR DEBUG: launcher BUILD_SEED=%lu\n", (unsigned long)BUILD_SEED);
     derive_magic(expected_magic, hdr.seed_marker, BUILD_SEED, "hdr");
@@ -125,18 +126,16 @@ static int decrypt_target_to_memfd(const unsigned char* enc_bytes, size_t enc_sz
         pw = *out_pw;
         pwlen = *out_pwlen;
     } else {
-        pw = malloc(MAXPW);
+        pw = sodium_malloc(MAXPW);
         if (!pw)
-            die("oom");
-        if (mlock(pw, MAXPW) != 0) {
+            die("sodium_malloc pw failed");
+        if (sodium_mlock(pw, MAXPW) != 0) {
             // fprintf(stderr, "warning: mlock pw failed: %s\n", strerror(errno));
         }
 
         ssize_t got = prompt_hidden_tty(pw, MAXPW, "");
         if (got <= 0) {
-            secure_zero(pw, MAXPW);
-            munlock(pw, MAXPW);
-            free(pw);
+            sodium_free(pw);
             die("no password");
         }
         if (pw[got - 1] == '\n')
@@ -147,34 +146,28 @@ static int decrypt_target_to_memfd(const unsigned char* enc_bytes, size_t enc_sz
     }
 
     unsigned char key[crypto_aead_xchacha20poly1305_ietf_KEYBYTES];
-    if (mlock(key, sizeof key) != 0) {
+    if (sodium_mlock(key, sizeof key) != 0) {
         // fprintf(stderr, "warning: mlock key failed: %s\n", strerror(errno));
     }
 
     if (crypto_pwhash(key, sizeof key, pw, pwlen, hdr.salt, KDF_OPSLIMIT, KDF_MEMLIMIT, KDF_ALG) !=
         0) {
-        secure_zero(pw, MAXPW);
-        munlock(pw, MAXPW);
         if (pw_allocated_here)
-            free(pw);
+            sodium_free(pw);
         die("KDF failed");
     }
+    sodium_mprotect_readonly(key);
 
     // if caller didn’t need password, wipe it immediately
     if (!(out_pw && *out_pw && *out_pwlen)) {
-        secure_zero(pw, MAXPW);
-        munlock(pw, MAXPW);
         if (pw_allocated_here)
-            free(pw);
+            sodium_free(pw);
     }
 
-    unsigned char* pt = malloc(ctsz);
-    if (!pt) {
-        secure_zero(key, sizeof key);
-        munlock(key, sizeof key);
-        die("oom");
-    }
-    if (mlock(pt, ctsz) != 0) {
+    unsigned char* pt = sodium_malloc(ctsz);
+    if (!pt)
+        die("sodium_malloc plaintext failed");
+    if (sodium_mlock(pt, ctsz) != 0) {
         // fprintf(stderr, "warning: mlock plaintext failed: %s\n", strerror(errno));
     }
 
@@ -182,39 +175,32 @@ static int decrypt_target_to_memfd(const unsigned char* enc_bytes, size_t enc_sz
     if (crypto_aead_xchacha20poly1305_ietf_decrypt(pt, &ptsz, NULL, ct, ctsz,
                                                    (const unsigned char*)&hdr, sizeof hdr,
                                                    hdr.nonce, key) != 0) {
-        secure_zero(key, sizeof key);
-        munlock(key, sizeof key);
-        secure_zero(pt, ctsz);
-        munlock(pt, ctsz);
-        free(pt);
-        die("decryption failed (wrong password or tampered header)");
+        sodium_munlock(key, sizeof key);
+        sodium_free(pt);
+        die("decryption failed (wrong password or tampered header)"); // intentional exit:
+                                                                      // decryption integrity
+                                                                      // failure
     }
 
-    secure_zero(key, sizeof key);
-    munlock(key, sizeof key);
+    sodium_mprotect_readonly(pt);
+    sodium_mprotect_readwrite(key);
 
     // Decompress if needed
     if (hdr.flags & 1) {
         unsigned char* dec = NULL;
         size_t dec_len = 0;
         if (zlib_decompress(pt, ptsz, &dec, &dec_len) != 0) {
-            secure_zero(pt, ptsz);
-            munlock(pt, ptsz);
-            free(pt);
+            sodium_free(pt);
             die("decompression failed");
         }
-        secure_zero(pt, ptsz);
-        munlock(pt, ptsz);
-        free(pt);
+        sodium_free(pt);
         pt = dec;
         ptsz = dec_len;
     }
 
     if (ptsz < 4 || !(pt[0] == 0x7f && pt[1] == 'E' && pt[2] == 'L' && pt[3] == 'F')) {
-        secure_zero(pt, ptsz);
-        munlock(pt, ptsz);
-        free(pt);
-        die("plaintext not ELF");
+        sodium_free(pt);
+        die("plaintext not ELF"); // intentional exit: decryption integrity failure
     }
 
     unsigned int rseed = seed_prng_from_build();
@@ -222,18 +208,15 @@ static int decrypt_target_to_memfd(const unsigned char* enc_bytes, size_t enc_sz
     int mfd = try_memfd_or_fallback("elf");
     add_syscall_noise(rand_r(&rseed) % 5);
     if (mfd < 0) {
-        secure_zero(pt, ptsz);
-        munlock(pt, ptsz);
-        free(pt);
+        sodium_free(pt);
         die("memfd_create");
     }
 
     ssize_t w = write(mfd, pt, ptsz);
+    sodium_mprotect_readonly(pt);
     if (w != (ssize_t)ptsz) {
         close(mfd);
-        secure_zero(pt, ptsz);
-        munlock(pt, ptsz);
-        free(pt);
+        sodium_free(pt);
         die("write memfd");
     }
 
@@ -246,17 +229,21 @@ static int decrypt_target_to_memfd(const unsigned char* enc_bytes, size_t enc_sz
     }
 #endif
 
-    secure_zero(pt, ptsz);
-    munlock(pt, ptsz);
-    free(pt);
+    sodium_mprotect_readwrite(pt);
+    sodium_free(pt);
+    if (pw_allocated_here)
+        sodium_free(pw);
 
     lseek(mfd, 0, SEEK_SET);
     *out_mfd = mfd;
+    sodium_memzero(&hdr, sizeof hdr);
+
     return 0;
 }
 
 static volatile sig_atomic_t keep_running = 1;
 
+// TODO: hook up signal handler later
 void handle_signal(int sig) {
     keep_running = 0;
 }
@@ -265,7 +252,7 @@ static void capture_and_encrypt_output(int read_fd, const char* outfile,
                                        const unsigned char* outkey, const unsigned char* outsalt) {
     unsigned char salt[crypto_pwhash_SALTBYTES];
     unsigned char key[crypto_secretstream_xchacha20poly1305_KEYBYTES];
-    if (mlock(key, sizeof key) != 0) {
+    if (sodium_mlock(key, sizeof key) != 0) {
         // fprintf(stderr, "warning: mlock key failed: %s\n", strerror(errno));
     }
     unsigned char ss_header[crypto_secretstream_xchacha20poly1305_HEADERBYTES];
@@ -277,9 +264,8 @@ static void capture_and_encrypt_output(int read_fd, const char* outfile,
     if (fd < 0) {
         perror("open outfile");
         close(read_fd);
-        secure_zero(key, sizeof key);
-        munlock(key, sizeof key);
-        secure_zero(salt, sizeof salt);
+        sodium_munlock(key, sizeof key);
+        sodium_memzero(salt, sizeof salt);
         die("open outfile");
     }
 
@@ -301,8 +287,8 @@ static void capture_and_encrypt_output(int read_fd, const char* outfile,
 
     unsigned char inbuf[8192];
     unsigned char outbuf[8192 + crypto_secretstream_xchacha20poly1305_ABYTES];
-    mlock(inbuf, sizeof inbuf);
-    mlock(outbuf, sizeof outbuf);
+    sodium_mlock(inbuf, sizeof inbuf);
+    sodium_mlock(outbuf, sizeof outbuf);
     while ((r = read(read_fd, inbuf, sizeof inbuf)) > 0) {
         unsigned long long outlen = 0;
 
@@ -341,14 +327,10 @@ static void capture_and_encrypt_output(int read_fd, const char* outfile,
     // flush to disk after each chunk
     fsync(fd);
 
-    secure_zero(inbuf, sizeof inbuf);
-    secure_zero(outbuf, sizeof outbuf);
-    munlock(inbuf, sizeof inbuf);
-    munlock(outbuf, sizeof outbuf);
+    sodium_munlock(outbuf, sizeof outbuf);
 
-    secure_zero(key, sizeof key);
-    munlock(key, sizeof key);
-    secure_zero(salt, sizeof salt);
+    sodium_munlock(key, sizeof key);
+    sodium_memzero(salt, sizeof salt);
     close(fd); // Close the file
 }
 
@@ -414,9 +396,9 @@ int main(int argc, char** argv) {
     printf("DEBUG mode enabled\n");
 #endif
 
-    
-    if (sodium_init() < 0)
+    if (sodium_init() < 0) {
         die("libsodium init failed");
+    }
 
     const char* enc_path = NULL;
     const char* outfile = NULL;
@@ -460,15 +442,15 @@ int main(int argc, char** argv) {
             die("stat %s failed", enc_path);
         }
         enc_sz = (size_t)st.st_size;
-        enc = malloc(enc_sz);
+        enc = sodium_allocarray(enc_sz, 1);
         if (!enc) {
             close(fd);
-            die("oom");
+            die("sodium_allocarray failed");
         }
         ssize_t r = read(fd, enc, enc_sz);
         close(fd);
         if (r != (ssize_t)enc_sz) {
-            free(enc);
+            sodium_free(enc);
             die("read %s failed", enc_path);
         }
     }
@@ -482,17 +464,15 @@ int main(int argc, char** argv) {
 
     int mfd = -1;
     enum { MAXPW = 4096 };
-    char* pw = malloc(MAXPW);
+    char* pw = sodium_malloc(MAXPW);
     if (!pw)
-        die("oom");
-    if (mlock(pw, MAXPW) != 0) {
+        die("sodium_malloc pw failed");
+    if (sodium_mlock(pw, MAXPW) != 0) {
         // fprintf(stderr, "warning: mlock pw failed: %s\n", strerror(errno));
     }
     ssize_t got = prompt_hidden_tty(pw, MAXPW, "");
     if (got <= 0) {
-        secure_zero(pw, MAXPW);
-        munlock(pw, MAXPW);
-        free(pw);
+        sodium_free(pw);
         die("no password");
     }
     if (pw[got - 1] == '\n')
@@ -503,22 +483,22 @@ int main(int argc, char** argv) {
     decrypt_target_to_memfd(enc, enc_sz, &mfd, &pw, &pwlen);
 
 #ifndef EMBED_BLOB
-    free(enc);
+    sodium_free(enc);
 #else
     if (!use_embedded)
-        free(enc);
+        sodium_free(enc);
 #endif
 
     // collect args
     enum { MAXLINE = 8192 };
-    char* line = malloc(MAXLINE);
+    char* line = sodium_malloc(MAXLINE);
     if (!line)
-        die("oom");
+        die("sodium_malloc line failed");
     if (prompt_hidden_tty(line, MAXLINE, "") < 0)
         line[0] = '\0';
     int ac = 0;
     char** av = split_ws(line, &ac);
-    free(line);
+    sodium_free(line);
 
     char** argv2 = calloc((size_t)(ac + 2), sizeof(char*));
     argv2[0] = (char*)"target";
@@ -527,44 +507,43 @@ int main(int argc, char** argv) {
     argv2[ac + 1] = NULL;
 
     // derive one output key and salt for the daemon, then wipe password
-    unsigned char outsalt[crypto_pwhash_SALTBYTES];
-    unsigned char outkey[crypto_secretstream_xchacha20poly1305_KEYBYTES];
+    unsigned char* outsalt = sodium_malloc(crypto_pwhash_SALTBYTES);
+    unsigned char* outkey = sodium_malloc(crypto_secretstream_xchacha20poly1305_KEYBYTES);
+    if (!outsalt || !outkey)
+        die("sodium_malloc out buffers failed");
 
     randombytes_buf(outsalt, sizeof outsalt);
 
-    if (mlock(outkey, sizeof outkey) != 0) {
+    if (sodium_mlock(outkey, sizeof outkey) != 0) {
         // fprintf(stderr, "warning: mlock outkey failed: %s\n", strerror(errno));
     }
 
-    if (crypto_pwhash(outkey, sizeof outkey, pw, pwlen, outsalt, KDF_OPSLIMIT, KDF_MEMLIMIT,
-                      KDF_ALG) != 0) {
-        secure_zero(outkey, sizeof outkey);
-        munlock(outkey, sizeof outkey);
+    if (crypto_pwhash(outkey, crypto_secretstream_xchacha20poly1305_KEYBYTES, pw, pwlen, outsalt,
+                      KDF_OPSLIMIT, KDF_MEMLIMIT, KDF_ALG) != 0) {
         die("KDF for outkey failed");
     }
 
+    sodium_mprotect_readonly(outkey);
+
     // scrub the plaintext password immediately
-    secure_zero(pw, MAXPW);
-    munlock(pw, MAXPW);
-    free(pw);
+    sodium_free(pw);
     pw = NULL;
     pwlen = 0;
 
     if (outfile) {
         daemonize_and_run(mfd, argv2, outfile, outkey, outsalt);
 
-        // cleanup parent
-        secure_zero(outkey, sizeof outkey);
-        munlock(outkey, sizeof outkey);
-
         for (int i = 0; i < ac; i++) {
-            secure_zero(av[i], strlen(av[i]));
+            sodium_memzero(av[i], strlen(av[i]));
             free(av[i]);
         }
 
         free(av);
         free(argv2);
         close(mfd);
+        sodium_mprotect_readwrite(outkey);
+        sodium_free(outkey);
+        sodium_free(outsalt);
         return 0;
     }
 
@@ -590,11 +569,15 @@ int main(int argc, char** argv) {
     waitpid(pid, NULL, 0);
 
     for (int i = 0; i < ac; i++) {
-        secure_zero(av[i], strlen(av[i]));
+        sodium_memzero(av[i], strlen(av[i]));
         free(av[i]);
     }
+
     free(av);
     free(argv2);
     close(mfd);
+    sodium_mprotect_readwrite(outkey);
+    sodium_free(outkey);
+    sodium_free(outsalt);
     return 0;
 }
