@@ -31,8 +31,6 @@ struct __attribute__((__packed__)) enc_header {
     unsigned char nonce[crypto_aead_xchacha20poly1305_ietf_NPUBBYTES];
 };
 
-#define CRYPTO_MAGIC_LEN 8 // will derive 8-byte magic at runtime
-
 void derive_magic(unsigned char out[CRYPTO_MAGIC_LEN], const unsigned char seed_marker[8],
                   unsigned long build_seed, const char* ctx);
 

@@ -3,7 +3,6 @@
 #include <sys/types.h>
 #include <zlib.h>
 
-void secure_zero(void* p, size_t n);
 #ifdef DEBUG
 void die(const char* fmt, ...) {
     va_list ap;
