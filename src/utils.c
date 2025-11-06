@@ -5,11 +5,15 @@
 
 #include "crypto.h"
 #include "utils.h"
+#include <errno.h>
 #include <fcntl.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/mman.h>
+#include <sys/prctl.h>
+#include <sys/ptrace.h>
 #include <sys/random.h>
 #include <sys/syscall.h>
 #include <termios.h>
@@ -273,5 +277,49 @@ int zlib_decompress(const unsigned char* in, size_t in_len, unsigned char** out,
     }
     *out_len = out_size;
     *out_len = cap;
+    return 0;
+}
+
+// int self_attach_ptrace() {
+//     int saved_errno = 0;
+
+// #ifdef ENABLE_ANTI_TAMPER
+//     // {
+//     //     FILE* f = fopen("/proc/self/status", "r");
+//     //     if (f) {
+//     //         char buf[256];
+//     //         while (fgets(buf, sizeof(buf), f)) {
+//     //             if (strncmp(buf, "TracerPid:", 10) == 0) {
+//     //                 int pid = atoi(buf + 10);
+//     //                 fclose(f);
+//     //                 if (pid != 0) {
+//     //                     // subtle_jitter();
+//     //                     // _exit(1);
+//     //                     return -1;
+//     //                 }
+//     //                 break;
+//     //             }
+//     //         }
+//     //         fclose(f);
+//     //     }
+//     // }
+//     // prctl(PR_SET_DUMPABLE, 0);
+//     // mlockall(MCL_CURRENT | MCL_FUTURE);
+
+//     if (ptrace(PTRACE_TRACEME, 0, NULL, NULL) == -1) {
+//         // perror("Traced!");
+//         subtle_jitter();
+//         _exit(1);
+//     }
+// #else
+//     // debug
+//     (void)saved_errno;
+// #endif
+
+//     return 0;
+// }
+
+// TODO: it doesn't work :(
+int self_attach_ptrace() {
     return 0;
 }
