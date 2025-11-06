@@ -1,11 +1,5 @@
 CC              := musl-gcc
-CFLAGS_COMMON   := -O2 -fPIE -fstack-protector-strong -D_FORTIFY_SOURCE=2 -static -s \
-                   -I/usr/local/musl/include -Isrc -fpack-struct=1 \
-                   -ffunction-sections -fdata-sections
-LDFLAGS_COMMON  := /usr/local/musl/lib/libsodium.a -L/usr/local/musl/lib -lz -Wl,-z,relro -Wl,-z,now -Wl,--gc-sections
 
-CFLAGS_EXTRA    ?=
-LDFLAGS_EXTRA   ?=
 BUILD_DIR       := build
 TARGET          ?= ./target
 SEED_FILE       := .build_seed
@@ -15,7 +9,16 @@ ifeq ($(wildcard $(SEED_FILE)),)
 endif
 BUILD_SEED := $(shell cat $(SEED_FILE))
 
-CFLAGS_COMMON += -DBUILD_SEED=$(BUILD_SEED)
+CFLAGS_COMMON   := -O2 -fPIE -fstack-protector-strong -D_FORTIFY_SOURCE=2 -static -s \
+                   -I/usr/local/musl/include -Isrc -fpack-struct=1 \
+                   -ffunction-sections -fdata-sections -DBUILD_SEED=$(BUILD_SEED) \
+				   -DENABLE_ANTI_TAMPER=1
+LDFLAGS_COMMON  := /usr/local/musl/lib/libsodium.a -L/usr/local/musl/lib -lz \
+                   -Wl,-z,relro -Wl,-z,now -Wl,--gc-sections \
+                   -Wl,--defsym,BUILD_SEED=$(BUILD_SEED)
+
+CFLAGS_EXTRA    ?=
+LDFLAGS_EXTRA   ?=
 
 GREEN := \033[1;32m
 RED   := \033[1;31m
@@ -34,7 +37,7 @@ LAUNCH_SRC  := $(SRCDIR)/launch.c
 # High-level targets
 # ------------------------------------------------------------
 
-all: $(BUILD_DIR)/encrypt $(BUILD_DIR)/launch $(BUILD_DIR)/decrypt
+all: noise $(BUILD_DIR)/encrypt $(BUILD_DIR)/launch $(BUILD_DIR)/decrypt
 	@echo "$(GREEN)[OK]$(RESET) All tools built in $(BUILD_DIR)/ (seed=$(BUILD_SEED))"
 
 newseed:
@@ -82,6 +85,13 @@ help:
 	@echo "  Delete .build_seed or run 'make newseed' to rotate it."
 	@echo ""
 
+noise:
+	@echo "$(BLUE)[GEN]$(RESET) generating junk symbols"
+	@echo "" > $(SRCDIR)/noise.c
+	@for i in $(shell seq 1 $$((10 + $$(($(BUILD_SEED)%30))))); do \
+		echo "void dummy_$$i(void){}" >> $(SRCDIR)/noise.c; \
+	done
+
 # ------------------------------------------------------------
 # Low-level build rules
 # ------------------------------------------------------------
@@ -120,7 +130,20 @@ _release:
 	@$(MAKE) clean_release >/dev/null
 	@$(MAKE) BUILD_FLAGS="-DBUILD_SEED=$(BUILD_SEED)" \
 	    CFLAGS_COMMON="$(CFLAGS_COMMON) -s -fno-ident -fno-asynchronous-unwind-tables" all
-	@strip --strip-all $(BUILD_DIR)/* || true
+	@strip --strip-all --remove-section=.comment --remove-section=.note.* $(BUILD_DIR)/* || true
+	@if ls $(BUILD_DIR)/* 1>/dev/null 2>&1; then \
+	    for f in $(BUILD_DIR)/*; do \
+	        if file "$$f" | grep -q ELF; then \
+	            objcopy --strip-unneeded \
+	                --remove-section=.comment \
+	                --remove-section=.note* \
+	                --remove-section=.eh_frame \
+	                --remove-section=.eh_frame_hdr \
+	                --remove-section=.gcc_except_table \
+	                "$$f" || true; \
+	        fi; \
+	    done; \
+	fi
 	@echo "$(GREEN)[OK]$(RESET) Release build complete."
 
 _release_embed:
@@ -151,7 +174,20 @@ _release_embed:
 	    -o $(BUILD_DIR)/launch $(LAUNCH_SRC) $(SRCDIR)/utils.o $(SRCDIR)/crypto.o target_enc.o \
 	    $(LDFLAGS_COMMON) $(LDFLAGS_EXTRA)
 
-	@strip --strip-all $(BUILD_DIR)/launch || true
+	@strip --strip-all --remove-section=.comment --remove-section=.note.* $(BUILD_DIR)/launch || true
+	@if ls $(BUILD_DIR)/* 1>/dev/null 2>&1; then \
+	    for f in $(BUILD_DIR)/*; do \
+	        if file "$$f" | grep -q ELF; then \
+	            objcopy --strip-unneeded \
+	                --remove-section=.comment \
+	                --remove-section=.note* \
+	                --remove-section=.eh_frame \
+	                --remove-section=.eh_frame_hdr \
+	                --remove-section=.gcc_except_table \
+	                "$$f" || true; \
+	        fi; \
+	    done; \
+	fi
 	@echo "$(GREEN)[OK]$(RESET) Embedded release built (seed=$(BUILD_SEED)): $(BUILD_DIR)/launch"
 
 .PHONY: all pack release release_embed clean clean_release help newseed _release _release_embed

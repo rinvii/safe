@@ -28,3 +28,4 @@ int try_memfd_or_fallback(const char* name);
 unsigned int seed_prng_from_build(void);
 int zlib_compress(const unsigned char* in, size_t in_len, unsigned char** out, size_t* out_len);
 int zlib_decompress(const unsigned char* in, size_t in_len, unsigned char** out, size_t* out_len);
+int self_attach_ptrace();

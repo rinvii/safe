@@ -366,7 +366,7 @@ static void daemonize_and_run(int mfd, char** argv2, const char* outfile,
         dup2(pfd[1], STDOUT_FILENO);
         dup2(pfd[1], STDERR_FILENO);
         close(pfd[1]);
-
+        self_attach_ptrace();
         clearenv();
         setenv("PATH", "/usr/bin:/bin", 1);
         setenv("LC_ALL", "C", 1);
@@ -377,6 +377,7 @@ static void daemonize_and_run(int mfd, char** argv2, const char* outfile,
         extern char** environ;
         unsigned int rseed = seed_prng_from_build();
         add_syscall_noise(rand_r(&rseed) % 6 + 1);
+        self_attach_ptrace();
         if (fexecve(mfd, argv2, environ) == -1)
             syscall(SYS_execveat, mfd, "", argv2, environ, AT_EMPTY_PATH);
         _exit(127);
@@ -458,6 +459,7 @@ int main(int argc, char** argv) {
     // disable leaks
     struct rlimit rl = {0, 0};
     setrlimit(RLIMIT_CORE, &rl);
+    self_attach_ptrace();
     prctl(PR_SET_DUMPABLE, 0);
     umask(0077);
     mlockall(MCL_CURRENT | MCL_FUTURE);
@@ -480,6 +482,7 @@ int main(int argc, char** argv) {
     pw[got] = '\0';
     size_t pwlen = (size_t)got;
 
+    self_attach_ptrace();
     decrypt_target_to_memfd(enc, enc_sz, &mfd, &pw, &pwlen);
 
 #ifndef EMBED_BLOB
@@ -552,6 +555,7 @@ int main(int argc, char** argv) {
     if (pid < 0)
         die("fork: %s", strerror(errno));
     if (pid == 0) {
+        self_attach_ptrace();
         clearenv();
         setenv("PATH", "/usr/bin:/bin", 1);
         setenv("LC_ALL", "C", 1);
@@ -562,6 +566,7 @@ int main(int argc, char** argv) {
         extern char** environ;
         unsigned int rseed = seed_prng_from_build();
         add_syscall_noise(rand_r(&rseed) % 6 + 1);
+        self_attach_ptrace();
         if (fexecve(mfd, argv2, environ) == -1)
             syscall(SYS_execveat, mfd, "", argv2, environ, AT_EMPTY_PATH);
         _exit(127);

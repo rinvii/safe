@@ -1,0 +1,27 @@
+
+void dummy_1(void){}
+void dummy_2(void){}
+void dummy_3(void){}
+void dummy_4(void){}
+void dummy_5(void){}
+void dummy_6(void){}
+void dummy_7(void){}
+void dummy_8(void){}
+void dummy_9(void){}
+void dummy_10(void){}
+void dummy_11(void){}
+void dummy_12(void){}
+void dummy_13(void){}
+void dummy_14(void){}
+void dummy_15(void){}
+void dummy_16(void){}
+void dummy_17(void){}
+void dummy_18(void){}
+void dummy_19(void){}
+void dummy_20(void){}
+void dummy_21(void){}
+void dummy_22(void){}
+void dummy_23(void){}
+void dummy_24(void){}
+void dummy_25(void){}
+void dummy_26(void){}
